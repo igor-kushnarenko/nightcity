@@ -30,8 +30,17 @@ const T = { value: 0 };
 const skyTex = {}; for (const s of SKY_PRESETS) skyTex[s] = null;
 const getSky = (s) => (skyTex[s] ??= tex(skyAssets(s).sky));
 const skyMat = new THREE.ShaderMaterial({ vertexShader: vert, depthTest: false, depthWrite: false,
-  uniforms: { uTex: { value: getSky(settings.sky) }, uFlash: { value: 0 } },
-  fragmentShader: `uniform sampler2D uTex; uniform float uFlash; varying vec2 vUv; void main(){ vec3 c = texture2D(uTex, vUv).rgb; gl_FragColor = vec4(c + uFlash*vec3(.55,.6,.75)*(.4+.6*c), 1.); }` });
+  uniforms: { uTex: { value: getSky(settings.sky) }, uFlash: { value: 0 }, uStars: { value: tex('stars_night', 'masks/') }, uStarOn: { value: 0 }, uT: T },
+  // звёзды: каждая (id в g маски) мерцает целиком, свой период 2–6 с, яркость 60–130 %, лёгкий оттенок, редкая вспышка
+  fragmentShader: `uniform sampler2D uTex, uStars; uniform float uFlash, uStarOn, uT; varying vec2 vUv;
+    float h(float n){ return fract(sin(n*12.9898)*43758.5453); }
+    void main(){ vec3 c = texture2D(uTex, vUv).rgb;
+      if (uStarOn > .001) { vec4 m = texture2D(uStars, vUv); if (m.r > .5) {
+        float id = floor(m.g*255. + .5); float per = 2. + 4.*h(id); float w = sin(6.2832*(uT/per + h(id*1.3)));
+        float k = .95 + .35*w; float sp = step(.985, h(id*3.7 + floor(uT/per)))*max(0., w)*.6;
+        vec3 tint = mix(vec3(.85,.92,1.15), vec3(1.15,1.,.85), h(id*5.1));
+        c = mix(c, c*k*mix(vec3(1.), tint, .5) + sp*vec3(.6,.65,.7), uStarOn); } }
+      gl_FragColor = vec4(c + uFlash*vec3(.55,.6,.75)*(.4+.6*c), 1.); }` });
 const meshes = { sky: quad(skyMat, LAYERS[0].scale) };
 
 // облака: дрейф по x с заворотом, у каждого слоя своя скорость
@@ -224,7 +233,7 @@ function frame(now) {
   // молния — только в грозу
   if (settings.sky === 'storm' && !NOFX.has('lightning')) { nextBolt -= dt; if (nextBolt < 0) { flash = 1; nextBolt = 12 + Math.random() * 30; } }
   flash = Math.max(0, flash - dt * 3.5); const fl = flash * (0.6 + 0.4 * Math.sin(T.value * 60));
-  skyMat.uniforms.uFlash.value = fl; roomMat.uniforms.uFlash.value = fl * 0.3; for (const c of clouds) c.mat.uniforms.uFlash.value = fl;
+  skyMat.uniforms.uFlash.value = fl; skyMat.uniforms.uStarOn.value = NOFX.has('stars') || LOW ? 0 : settings.sky === 'night' ? 1 : 0; roomMat.uniforms.uFlash.value = fl * 0.3; for (const c of clouds) c.mat.uniforms.uFlash.value = fl;
   for (const L of LAYERS.slice(2)) { const u = meshes[L.id].material.uniforms; u.uFlash.value = fl; if (!NOFX.has('city')) u.uLights.value = settings.lights; }
   { const f = 1 - Math.exp(-dt / 0.1); const u = roomMat.uniforms.uI.value; u.x += ((settings.lamps.left ? 1 : 0) - u.x) * f; u.y += ((settings.lamps.right ? 1 : 0) - u.y) * f; }
   rainShown += (settings.rain - rainShown) * (1 - Math.exp(-dt * 1.2)); const RP = rainParams(rainShown);

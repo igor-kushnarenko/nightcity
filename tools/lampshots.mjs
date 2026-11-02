@@ -1,6 +1,6 @@
 // node tools/lampshots.mjs <url> shots/v4 — лампы: off / left / right / both (ночь)
 import { chromium } from 'playwright-core'; import { mkdirSync } from 'node:fs';
-const [url, out = 'shots/v4'] = process.argv.slice(2); mkdirSync(out, { recursive: true });
+const [url, out = 'shots/v5'] = process.argv.slice(2); mkdirSync(out, { recursive: true });
 const b = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const p = await (await b.newContext({ viewport: { width: 1672, height: 941 } })).newPage(); const errs = []; p.on('pageerror', (e) => errs.push('' + e)); p.on('console', (m) => m.type() === 'error' && errs.push(m.text()));
 for (const [n, l, extra = ''] of [['off', 'none'], ['left', 'left'], ['right', 'right'], ['both', 'all'], ['both_low', 'all', '&q=low']]) {

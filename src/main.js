@@ -106,9 +106,9 @@ for (const L of NOFX.has('rain') ? [] : LOW ? [1, 2] : [0, 1, 2]) rainMeshes.pus
 // ореол и слабое отражение в стекле на прозрачных пикселях. Свет квантуется по ступеням — пиксельный вид.
 const LP = LAMP_IDS.map((id) => LAMPS[id]);
 const roomMat = new THREE.ShaderMaterial({ vertexShader: vert, transparent: true, depthTest: false, depthWrite: false,
-  uniforms: { uTex: { value: tex('room') }, uNrm: { value: tex('room_nrm', 'masks/') }, uEmit: { value: tex('room_emit', 'masks/') }, uFlash: { value: 0 }, uT: T,
+  uniforms: { uTex: { value: tex('room') }, uNrm: { value: tex('room_nrm', 'masks/') }, uEmit: { value: tex('room_emit', 'masks/') }, uLitL: { value: tex('lit_left', 'masks/') }, uLitR: { value: tex('lit_right', 'masks/') }, uFlash: { value: 0 }, uT: T,
     uI: { value: new THREE.Vector2(0, 0) }, uLow: { value: LOW ? 1 : 0 } },
-  fragmentShader: `uniform sampler2D uTex, uNrm, uEmit; uniform float uFlash, uT, uLow; uniform vec2 uI; varying vec2 vUv;
+  fragmentShader: `uniform sampler2D uTex, uNrm, uEmit, uLitL, uLitR; uniform float uFlash, uT, uLow; uniform vec2 uI; varying vec2 vUv;
     const vec3 C0 = vec3(${LP[0].color.join(',')}); const vec3 C1 = vec3(${LP[1].color.join(',')});
     vec3 lampPos(int i, vec2 p){ if (i == 0) return vec3(${LP[0].pos[0]}., ${LP[0].pos[1]}., 40.); return vec3(${LP[1].pos[0]}., clamp(p.y, ${LP[1].seg[0]}., ${LP[1].seg[1]}.), 30.); }
     void main(){
@@ -122,16 +122,16 @@ const roomMat = new THREE.ShaderMaterial({ vertexShader: vert, transparent: true
         float att = 1. / (1. + (d/R)*(d/R)*4.) * (1. - smoothstep(R*1.4, R*2.4, d));
         float diff = uLow > .5 ? .7 : max(dot(n, l), 0.)*.75 + .25;
         float q = floor(att*diff*I*14. + .5)/14.;
-        lit += C*q;
-        if (uLow < .5) { vec3 hv = normalize(l + vec3(0.,0.,1.)); float sp = pow(max(dot(n, hv), 0.), 36.) * gloss * att * I; add += C * floor(sp*10. + .5)/10. * .55; }
-        halo += I * exp(-d*d/(i == 0 ? 900. : 1400.)) * .55; haloC += C * I * exp(-d*d/(i == 0 ? 900. : 1400.));
+        if (false) { vec3 hv = normalize(l + vec3(0.,0.,1.)); float sp = pow(max(dot(n, hv), 0.), 36.) * gloss * att * I; add += C * floor(sp*10. + .5)/10. * .55; }
+        halo += I * exp(-d*d/(i == 0 ? 1100. : 1800.)) * .6; haloC += C * I * exp(-d*d/(i == 0 ? 900. : 1400.));
         float mx = i == 0 ? ${2 * 243 - LP[0].pos[0]}. : ${2 * 1577 - LP[1].pos[0]}.; vec2 mp = vec2(mx, lampPos(i, p).y);
-        refl += I * exp(-dot(p - mp, p - mp)/(i == 0 ? 500. : 700.)) * .14;
-        if (i == 0) add += C*em.r*I*.9; else add += C*em.g*I*.9;
+        refl += I * exp(-dot(p - mp, p - mp)/(i == 0 ? 600. : 900.)) * .2;
+        if (i == 0) add += C*em.r*I*.35; else add += C*em.g*I*.3;
       }
       vec3 hc = haloC / max(halo/.55, 1e-3);
       if (c.a < .01) { float a = min(.5, halo*.35 + refl); if (a < .004) discard; gl_FragColor = vec4(hc, a); return; }
-      vec3 col = c.rgb*(1. + lit*4.) + lit*.07 + add + hc*halo*.22;
+      float fl0 = 1. + .02*sin(uT*13.1)*sin(uT*7.3), fl1 = 1. + .02*sin(uT*13.1 + 2.)*sin(uT*7.3 + 1.);
+      vec3 col = c.rgb + texture2D(uLitL, vUv).rgb*uI.x*fl0 + texture2D(uLitR, vUv).rgb*uI.y*fl1 + add + hc*halo*.22;
       gl_FragColor = vec4(col*(1.+uFlash*.35), c.a);
     }` });
 meshes.room = quad(roomMat, 1 + (ROOM_PARALLAX * 2) / W);

@@ -1,0 +1,10 @@
+import test from 'node:test'; import assert from 'node:assert/strict';
+import { LAMPS, LAMP_IDS, hitLamp, clientToScene, W, H } from '../src/config.js';
+import { loadSettings, saveSettings, toggleLamp, SETTINGS_KEY } from '../src/settings.js';
+const mem = () => { const m = new Map(); return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => m.set(k, v) }; };
+test('лампы выключены по умолчанию и сохраняются', () => { const st = mem(); let s = loadSettings(st); assert.deepEqual(s.lamps, { left: false, right: false });
+  s = toggleLamp(s, 'left'); saveSettings(s, st); assert.deepEqual(loadSettings(st).lamps, { left: true, right: false }); assert.equal(toggleLamp(s, 'tv'), s); });
+test('битые значения ламп → bool', () => { const st = mem(); st.setItem(SETTINGS_KEY, '{"lamps":{"left":"yes","right":0}}'); assert.deepEqual(loadSettings(st).lamps, { left: true, right: false }); });
+test('клик по лампам', () => { assert.equal(hitLamp(194, 576), 'left'); assert.equal(hitLamp(1632, 350), 'right'); assert.equal(hitLamp(800, 400), null);
+  for (const id of LAMP_IDS) { const [x0, y0, x1, y1] = LAMPS[id].hit; assert.ok(x0 < x1 && y0 < y1 && x1 <= W && y1 <= H); } });
+test('clientToScene при contain', () => { const r = { left: 0, top: 0, width: W * 2, height: H * 2 + 100 }; assert.deepEqual(clientToScene(W, H + 50, r), [W / 2, H / 2]); });

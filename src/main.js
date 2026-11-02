@@ -1,7 +1,7 @@
 // nightcity: небо → облака → дальний → средний дальний → средний ближний → ближний → дождь → комната.
 import * as THREE from 'three';
-import { W, H, LAYERS, ROOM_PARALLAX, layerOffset } from './config.js';
-import { loadSettings, saveSettings, skyAssets, rainParams, SKY_PRESETS } from './settings.js';
+import { W, H, LAYERS, ROOM_PARALLAX, layerOffset, LAMPS, LAMP_IDS, hitLamp, clientToScene } from './config.js';
+import { loadSettings, saveSettings, skyAssets, rainParams, SKY_PRESETS, toggleLamp } from './settings.js';
 import { Ambience } from './audio.js';
 
 const params = new URLSearchParams(location.search);
@@ -11,6 +11,7 @@ const TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in windo
 const PARALLAX_ON = !(LOW || TOUCH || NOFX.has('parallax'));
 let settings = loadSettings();
 if (SKY_PRESETS.includes(params.get('sky'))) settings.sky = params.get('sky');
+if (params.has('lamps')) { const on = params.get('lamps').split(','); settings.lamps = { left: on.includes('left') || on.includes('all'), right: on.includes('right') || on.includes('all') }; }
 if (params.has('rain')) settings.rain = Math.min(1, Math.max(0, +params.get('rain')));
 
 const BASE = import.meta.env.BASE_URL + 'layers/';
@@ -101,8 +102,38 @@ const rainMeshes = [];
 for (const L of NOFX.has('rain') ? [] : LOW ? [1, 2] : [0, 1, 2]) rainMeshes.push(quad(new THREE.ShaderMaterial({ vertexShader: vert, fragmentShader: rainFrag, transparent: true, depthTest: false, depthWrite: false, uniforms: { ...rainU, uLayer: { value: L } } })));
 
 // комната (окно прозрачное) — сверху
-const roomMat = new THREE.ShaderMaterial({ vertexShader: vert, transparent: true, depthTest: false, depthWrite: false, uniforms: { uTex: { value: tex('room') }, uFlash: { value: 0 } },
-  fragmentShader: `uniform sampler2D uTex; uniform float uFlash; varying vec2 vUv; void main(){ vec4 c = texture2D(uTex, vUv); if (c.a < .01) discard; gl_FragColor = vec4(c.rgb*(1.+uFlash*.35), c.a); }` });
+// Свет ламп: диффуз по псевдонормалям (masks/room_nrm rg), блики по блеску (b), свечение излучателей (masks/room_emit),
+// ореол и слабое отражение в стекле на прозрачных пикселях. Свет квантуется по ступеням — пиксельный вид.
+const LP = LAMP_IDS.map((id) => LAMPS[id]);
+const roomMat = new THREE.ShaderMaterial({ vertexShader: vert, transparent: true, depthTest: false, depthWrite: false,
+  uniforms: { uTex: { value: tex('room') }, uNrm: { value: tex('room_nrm', 'masks/') }, uEmit: { value: tex('room_emit', 'masks/') }, uFlash: { value: 0 }, uT: T,
+    uI: { value: new THREE.Vector2(0, 0) }, uLow: { value: LOW ? 1 : 0 } },
+  fragmentShader: `uniform sampler2D uTex, uNrm, uEmit; uniform float uFlash, uT, uLow; uniform vec2 uI; varying vec2 vUv;
+    const vec3 C0 = vec3(${LP[0].color.join(',')}); const vec3 C1 = vec3(${LP[1].color.join(',')});
+    vec3 lampPos(int i, vec2 p){ if (i == 0) return vec3(${LP[0].pos[0]}., ${LP[0].pos[1]}., 40.); return vec3(${LP[1].pos[0]}., clamp(p.y, ${LP[1].seg[0]}., ${LP[1].seg[1]}.), 30.); }
+    void main(){
+      vec4 c = texture2D(uTex, vUv); vec2 p = floor(vec2(vUv.x*${W}., (1.-vUv.y)*${H}.)) + .5;
+      vec4 nt = texture2D(uNrm, vUv); vec3 n = vec3(nt.rg*2.-1., 0.); n.z = sqrt(max(.05, 1. - dot(n.xy, n.xy))); float gloss = nt.b;
+      vec3 em = texture2D(uEmit, vUv).rgb; vec3 add = vec3(0.); vec3 lit = vec3(0.); float halo = 0.; vec3 haloC = vec3(0.); float refl = 0.;
+      for (int i = 0; i < 2; i++) {
+        float I = i == 0 ? uI.x : uI.y; if (I < .001) continue; vec3 C = i == 0 ? C0 : C1; float R = i == 0 ? ${LP[0].radius}. : ${LP[1].radius}.;
+        I *= 1. + .02*sin(uT*13.1 + float(i)*2.) * sin(uT*7.3 + float(i));
+        vec3 L = lampPos(i, p) - vec3(p, 0.); float d = length(L.xy); vec3 l = normalize(vec3(L.x, L.y, L.z));
+        float att = 1. / (1. + (d/R)*(d/R)*4.) * (1. - smoothstep(R*1.4, R*2.4, d));
+        float diff = uLow > .5 ? .7 : max(dot(n, l), 0.)*.75 + .25;
+        float q = floor(att*diff*I*14. + .5)/14.;
+        lit += C*q;
+        if (uLow < .5) { vec3 hv = normalize(l + vec3(0.,0.,1.)); float sp = pow(max(dot(n, hv), 0.), 36.) * gloss * att * I; add += C * floor(sp*10. + .5)/10. * .55; }
+        halo += I * exp(-d*d/(i == 0 ? 900. : 1400.)) * .55; haloC += C * I * exp(-d*d/(i == 0 ? 900. : 1400.));
+        float mx = i == 0 ? ${2 * 243 - LP[0].pos[0]}. : ${2 * 1577 - LP[1].pos[0]}.; vec2 mp = vec2(mx, lampPos(i, p).y);
+        refl += I * exp(-dot(p - mp, p - mp)/(i == 0 ? 500. : 700.)) * .14;
+        if (i == 0) add += C*em.r*I*.9; else add += C*em.g*I*.9;
+      }
+      vec3 hc = haloC / max(halo/.55, 1e-3);
+      if (c.a < .01) { float a = min(.5, halo*.35 + refl); if (a < .004) discard; gl_FragColor = vec4(hc, a); return; }
+      vec3 col = c.rgb*(1. + lit*4.) + lit*.07 + add + hc*halo*.22;
+      gl_FragColor = vec4(col*(1.+uFlash*.35), c.a);
+    }` });
 meshes.room = quad(roomMat, 1 + (ROOM_PARALLAX * 2) / W);
 
 // ---------- ввод ----------
@@ -124,6 +155,7 @@ function renderUI() {
   $('cloudrow').classList.toggle('collapsed', !settings.clouds);
   for (const k of SLIDERS) if (document.activeElement !== $(k)) $(k).value = Math.round(settings[k] * 100);
   $('parallax').disabled = !PARALLAX_ON;
+  for (const id of LAMP_IDS) { const b = $('lamp_' + id); b.classList.toggle('on', settings.lamps[id]); b.setAttribute('aria-pressed', String(settings.lamps[id])); }
 }
 function update(patch) {
   const prevSky = settings.sky; settings = { ...settings, ...patch }; saveSettings(settings);
@@ -133,6 +165,12 @@ function update(patch) {
 for (const b of document.querySelectorAll('#skyseg .seg')) b.addEventListener('click', () => update({ sky: b.dataset.sky }));
 $('cloudsbtn').addEventListener('click', () => update({ clouds: !settings.clouds }));
 for (const k of SLIDERS) $(k).addEventListener('input', (e) => update({ [k]: e.target.value / 100 }));
+function setLamp(id) { settings = toggleLamp(settings, id); saveSettings(settings); audio.click(); renderUI(); }
+for (const id of LAMP_IDS) $('lamp_' + id).addEventListener('click', () => setLamp(id));
+const canvas = renderer.domElement;
+const lampAt = (e) => hitLamp(...clientToScene(e.clientX, e.clientY, canvas.getBoundingClientRect()));
+window.addEventListener('pointermove', (e) => { canvas.style.cursor = e.target === canvas && lampAt(e) ? 'pointer' : ''; });
+canvas.addEventListener('click', (e) => { const id = lampAt(e); if (id) setLamp(id); });
 const muteBtn = $('mute');
 function toggleMute() { muted = !muted; audio.set(muted ? 0 : settings.volume, settings.rain); muteBtn.querySelector('span').textContent = muted ? 'Звук выкл' : 'Звук'; muteBtn.classList.toggle('off', muted); }
 muteBtn.addEventListener('click', toggleMute);
@@ -167,6 +205,7 @@ window.addEventListener('keydown', (e) => {
   else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(k)) {
     const dir = k === 'ArrowDown' || k === 'ArrowRight' ? 1 : -1; const n = i < 0 ? 0 : (i + dir + list.length) % list.length; list[n].focus(); e.preventDefault();
   } else if (k >= '1' && k <= '4') update({ sky: SKY_PRESETS[+k - 1] });
+  else if ('lLдД'.includes(k)) setLamp('left'); else if ('kKлЛ'.includes(k)) setLamp('right');
   else if ('mMьЬ'.includes(k)) toggleMute(); else if ('fFаА'.includes(k)) toggleFs();
 }, { capture: true });
 window.addEventListener('wheel', (e) => { if (hud.contains(e.target)) return; update({ rain: Math.min(1, Math.max(0, Math.round((settings.rain - Math.sign(e.deltaY) * 0.05) * 20) / 20)) }); }, { passive: true });
@@ -187,9 +226,10 @@ function frame(now) {
   flash = Math.max(0, flash - dt * 3.5); const fl = flash * (0.6 + 0.4 * Math.sin(T.value * 60));
   skyMat.uniforms.uFlash.value = fl; roomMat.uniforms.uFlash.value = fl * 0.3; for (const c of clouds) c.mat.uniforms.uFlash.value = fl;
   for (const L of LAYERS.slice(2)) { const u = meshes[L.id].material.uniforms; u.uFlash.value = fl; if (!NOFX.has('city')) u.uLights.value = settings.lights; }
+  { const f = 1 - Math.exp(-dt / 0.1); const u = roomMat.uniforms.uI.value; u.x += ((settings.lamps.left ? 1 : 0) - u.x) * f; u.y += ((settings.lamps.right ? 1 : 0) - u.y) * f; }
   rainShown += (settings.rain - rainShown) * (1 - Math.exp(-dt * 1.2)); const RP = rainParams(rainShown);
   rainU.uRainDen.value = RP.density; rainU.uRainLen.value = RP.length; rainU.uRainSlant.value = 0.03 + RP.slant * 0.15; rainU.uRainA.value = RP.alpha; rainU.uRainT.value = (rainU.uRainT.value + dt * RP.speed) % 1800;
   renderer.render(scene, camera); requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-window.__nightcity = { state: () => ({ ...settings, parallaxOn: PARALLAX_ON, offsets: LAYERS.map((L) => layerOffset(L, cur[0], cur[1], PARALLAX_ON ? settings.parallax : 0).map((v) => +v.toFixed(1))) }), fps: () => fps, bolt: () => { flash = 1; } };
+window.__nightcity = { state: () => ({ ...settings, parallaxOn: PARALLAX_ON, offsets: LAYERS.map((L) => layerOffset(L, cur[0], cur[1], PARALLAX_ON ? settings.parallax : 0).map((v) => +v.toFixed(1))) }), fps: () => fps, bolt: () => { flash = 1; }, lamps: () => roomMat.uniforms.uI.value.toArray() };

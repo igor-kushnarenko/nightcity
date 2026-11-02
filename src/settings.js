@@ -1,7 +1,7 @@
 // Настройки nightcity (localStorage nightcity.settings.v1).
 export const SETTINGS_KEY = 'nightcity.settings.v1';
 export const SKY_PRESETS = ['dusk', 'night', 'day', 'storm'];
-export const DEFAULT_SETTINGS = { sky: 'dusk', clouds: true, cloudSpeed: 0.4, lights: 0.7, rain: 0.5, parallax: 0.6, volume: 0.5 };
+export const DEFAULT_SETTINGS = { sky: 'dusk', clouds: true, cloudSpeed: 0.4, lights: 0.7, rain: 0.5, parallax: 0.6, volume: 0.5, lamps: { left: false, right: false } };
 const c01 = (x, d) => (x !== null && x !== '' && x !== undefined && Number.isFinite(+x) ? Math.min(1, Math.max(0, +x)) : d);
 export function normalize(raw) {
   const D = DEFAULT_SETTINGS;
@@ -10,6 +10,7 @@ export function normalize(raw) {
     clouds: raw?.clouds === undefined ? D.clouds : !!raw.clouds,
     cloudSpeed: c01(raw?.cloudSpeed, D.cloudSpeed), lights: c01(raw?.lights, D.lights),
     rain: c01(raw?.rain, D.rain), parallax: c01(raw?.parallax, D.parallax), volume: c01(raw?.volume, D.volume),
+    lamps: { left: !!raw?.lamps?.left, right: !!raw?.lamps?.right },
   };
 }
 export function loadSettings(storage = globalThis.localStorage) {
@@ -28,3 +29,4 @@ export function rainParams(level) {
   return { density: lerp(0, 0.62, l ** 1.3), speed: lerp(0.75, 1.3, l), length: lerp(0.55, 1.7, l), slant: lerp(0.1, 0.34, l), alpha: lerp(0.65, 1.15, l),
     soundGain: l < 0.01 ? 0 : lerp(0.015, 0.07, l), soundCutoff: lerp(2500, 6000, l) };
 }
+export function toggleLamp(s, id) { if (!(id in s.lamps)) return s; return { ...s, lamps: { ...s.lamps, [id]: !s.lamps[id] } }; }

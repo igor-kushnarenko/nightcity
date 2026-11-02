@@ -19,6 +19,9 @@ export class Ambience {
     this.hum = ctx.createGain(); this.hum.gain.value = 0.012; src(brown).connect(hlp).connect(this.hum).connect(this.master);
     this.apply(); this.next = ctx.currentTime; this.timer = setInterval(() => this.schedule(), 100);
   }
+  click() { if (!this.ctx) return; const ctx = this.ctx, t = ctx.currentTime, s = ctx.createBufferSource(); s.buffer = this.noise;
+    const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 2500; const g = ctx.createGain();
+    g.gain.setValueAtTime(0.08, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.025); s.connect(f).connect(g).connect(this.master); s.start(t, Math.random() * 3, 0.03); }
   buf(fill) { const b = this.ctx.createBuffer(1, this.ctx.sampleRate * 4, this.ctx.sampleRate); fill(b.getChannelData(0)); return b; }
   set(vol, rain) { this.vol = vol; this.rain = rain; this.apply(); }
   apply() {

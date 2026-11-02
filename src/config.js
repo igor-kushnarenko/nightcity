@@ -15,3 +15,13 @@ export function layerOffset(layer, mx, my, strength) {
   const cl = (v, m) => Math.max(-m, Math.min(m, v));
   return [cl(-mx * p, maxX), cl(my * p, maxY)];
 }
+// Светильники комнаты (пиксели room.png): pos — точка света (у панели — отрезок seg), hit — зона клика.
+export const LAMPS = {
+  left: { name: 'Лампа', key: 'l', pos: [194, 576], seg: [576, 576], radius: 230, color: [1.0, 0.72, 0.42], hit: [174, 546, 216, 602] },
+  right: { name: 'Панель', key: 'k', pos: [1632, 350], seg: [275, 426], radius: 280, color: [1.0, 0.62, 0.28], hit: [1612, 240, 1662, 462] },
+};
+export const LAMP_IDS = Object.keys(LAMPS);
+/** Какая лампа под точкой сцены (px), или null. */
+export function hitLamp(x, y) { for (const id of LAMP_IDS) { const [x0, y0, x1, y1] = LAMPS[id].hit; if (x >= x0 && x <= x1 && y >= y0 && y <= y1) return id; } return null; }
+/** Клиентские координаты → пиксели сцены при object-fit: contain. */
+export function clientToScene(cx, cy, rect) { const s = Math.min(rect.width / W, rect.height / H), ox = rect.left + (rect.width - W * s) / 2, oy = rect.top + (rect.height - H * s) / 2; return [(cx - ox) / s, (cy - oy) / s]; }

@@ -2,18 +2,25 @@
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>nightcity</title><link rel="icon" href="/nightcity/favicon.svg"><link rel="stylesheet" href="/src/style.css"></head>
 <body>
+<div id="bg"></div>
 <div id="stage"></div>
-<div id="overlay"><div>nightcity<br><small>нажмите, чтобы включить звук</small></div></div>
-<div id="menu"><button id="mbtn" aria-label="меню">☰</button>
-<div id="panel">
-  <label>Небо <select id="sky"><option value="dusk">сумерки</option><option value="night">ночь</option><option value="day">день</option><option value="storm">гроза</option></select></label>
-  <label><input type="checkbox" id="clouds"> облака</label>
-  <label>скорость облаков <input type="range" id="cloudSpeed" min="0" max="100"></label>
-  <label>огни города <input type="range" id="lights" min="0" max="100"></label>
-  <label>дождь <input type="range" id="rain" min="0" max="100"></label>
-  <label>параллакс <input type="range" id="parallax" min="0" max="100"></label>
-  <label>громкость <input type="range" id="volume" min="0" max="100"></label>
-  <small>F — весь экран, M — звук</small>
-</div></div>
+<div id="overlay"><div class="hint">Нажмите любую кнопку или коснитесь экрана — включится звук.<br><small>Движение мыши — параллакс · колесо — сила дождя · меню — круглая кнопка справа внизу</small></div></div>
+<div id="toast" class="glass"></div>
+<button id="menubtn" type="button" class="glass" aria-label="Меню" aria-expanded="false"><svg viewBox="0 0 16 16"><path d="M3 4.5h10M3 8h10M3 11.5h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+<div id="hud" class="glass closed">
+  <div class="row"><div class="seggroup" id="skyseg">
+    <button type="button" class="seg" data-sky="dusk">Сумерки</button><button type="button" class="seg" data-sky="night">Ночь</button><button type="button" class="seg" data-sky="day">День</button><button type="button" class="seg" data-sky="storm">Гроза</button>
+  </div></div>
+  <div class="row">
+    <button id="cloudsbtn" type="button" class="icon" aria-pressed="true"><span class="led"></span><span>Облака</span></button>
+    <button id="mute" type="button" class="icon"><span>Звук</span></button>
+    <button id="fs" type="button" class="icon" aria-label="На весь экран"><svg viewBox="0 0 16 16"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" stroke="currentColor" fill="none" stroke-width="1.6"/></svg></button>
+  </div>
+  <label class="rainlvl" id="cloudrow"><span>Скорость облаков</span><input id="cloudSpeed" type="range" min="0" max="100" step="5"></label>
+  <label class="rainlvl"><span>Огни города</span><input id="lights" type="range" min="0" max="100" step="5"></label>
+  <label class="rainlvl"><span>Сила дождя</span><input id="rain" type="range" min="0" max="100" step="5"></label>
+  <label class="rainlvl"><span>Параллакс</span><input id="parallax" type="range" min="0" max="100" step="5"></label>
+  <label class="rainlvl"><span>Громкость</span><input id="volume" type="range" min="0" max="100" step="5"></label>
+</div>
 <script type="module" src="/src/main.js"></script>
 </body></html>

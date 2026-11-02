@@ -6,4 +6,5 @@
 - Небо: dusk/night/day/storm (storm = storm_sky + storm_clouds + редкие молнии). Настройки `nightcity.settings.v1`.
 - Отладка: `?sky=`, `?rain=0..1`, `?nofx=rain,clouds,city,lightning,parallax`, `window.__nightcity`.
 - Скриншоты: `npx vite preview --port 4190 &` и `node tools/shots.mjs http://localhost:4190/nightcity/ shots/v1`.
+- Меню — порт из rainroom (☰ справа внизу, hud.glass, автозакрытие 5 с, стрелки/Enter — пульт, 1–4 небо, M звук, F экран, колесо — дождь). Скриншот: `node tools/menushot.mjs <url> shots/v2/menu.png`.
 - Важно (three r170): не класть меши в Group с renderOrder — группа сортируется после всех слоёв (облака оказались поверх комнаты).

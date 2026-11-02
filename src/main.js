@@ -108,31 +108,68 @@ meshes.room = quad(roomMat, 1 + (ROOM_PARALLAX * 2) / W);
 let mouse = [0, 0], cur = [0, 0];
 if (PARALLAX_ON) window.addEventListener('pointermove', (e) => { mouse = [(e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1]; });
 
-// ---------- звук и меню ----------
+// ---------- звук и меню (как в rainroom) ----------
 const audio = new Ambience(); audio.set(settings.volume, settings.rain);
-const overlay = document.getElementById('overlay'); let muted = false;
-const startAudio = () => { audio.start(); overlay.classList.add('gone'); };
-overlay.addEventListener('click', startAudio); window.addEventListener('keydown', startAudio, { once: true });
-const menu = document.getElementById('menu'); let closeT;
-const openMenu = () => { menu.classList.add('open'); clearTimeout(closeT); };
-const schedClose = () => { clearTimeout(closeT); closeT = setTimeout(() => menu.classList.remove('open'), 5000); };
-menu.addEventListener('pointerenter', openMenu); menu.addEventListener('pointerleave', schedClose);
-document.getElementById('mbtn').addEventListener('click', () => { menu.classList.toggle('open'); schedClose(); });
+document.getElementById('bg').style.backgroundImage = `url(${BASE}room.png)`;
 const $ = (id) => document.getElementById(id);
-function renderUI() { $('sky').value = settings.sky; $('clouds').checked = settings.clouds; for (const k of ['cloudSpeed', 'lights', 'rain', 'parallax', 'volume']) $(k).value = Math.round(settings[k] * 100); }
+const toast = $('toast'); let toastT;
+function hint(text) { toast.textContent = text; toast.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => toast.classList.remove('show'), 2600); }
+let muted = false;
+const SKY_NAMES = { dusk: 'Сумерки', night: 'Ночь', day: 'День', storm: 'Гроза' };
+const SLIDERS = ['cloudSpeed', 'lights', 'rain', 'parallax', 'volume'];
+function renderUI() {
+  for (const b of document.querySelectorAll('#skyseg .seg')) b.classList.toggle('sel', b.dataset.sky === settings.sky);
+  $('cloudsbtn').classList.toggle('on', settings.clouds); $('cloudsbtn').setAttribute('aria-pressed', String(settings.clouds));
+  $('cloudrow').classList.toggle('collapsed', !settings.clouds);
+  for (const k of SLIDERS) if (document.activeElement !== $(k)) $(k).value = Math.round(settings[k] * 100);
+  $('parallax').disabled = !PARALLAX_ON;
+}
 function update(patch) {
   const prevSky = settings.sky; settings = { ...settings, ...patch }; saveSettings(settings);
-  if (settings.sky !== prevSky) { skyMat.uniforms.uTex.value = getSky(settings.sky); buildClouds(); }
-  audio.set(muted ? 0 : settings.volume, settings.rain); renderUI(); schedClose();
+  if (settings.sky !== prevSky) { skyMat.uniforms.uTex.value = getSky(settings.sky); buildClouds(); hint(SKY_NAMES[settings.sky]); }
+  audio.set(muted ? 0 : settings.volume, settings.rain); renderUI();
 }
-$('sky').addEventListener('change', (e) => update({ sky: e.target.value }));
-$('clouds').addEventListener('change', (e) => update({ clouds: e.target.checked }));
-for (const k of ['cloudSpeed', 'lights', 'rain', 'parallax', 'volume']) $(k).addEventListener('input', (e) => update({ [k]: e.target.value / 100 }));
+for (const b of document.querySelectorAll('#skyseg .seg')) b.addEventListener('click', () => update({ sky: b.dataset.sky }));
+$('cloudsbtn').addEventListener('click', () => update({ clouds: !settings.clouds }));
+for (const k of SLIDERS) $(k).addEventListener('input', (e) => update({ [k]: e.target.value / 100 }));
+const muteBtn = $('mute');
+function toggleMute() { muted = !muted; audio.set(muted ? 0 : settings.volume, settings.rain); muteBtn.querySelector('span').textContent = muted ? 'Звук выкл' : 'Звук'; muteBtn.classList.toggle('off', muted); }
+muteBtn.addEventListener('click', toggleMute);
+function toggleFs() { const d = document, el = d.documentElement; if (d.fullscreenElement || d.webkitFullscreenElement) (d.exitFullscreen || d.webkitExitFullscreen).call(d); else (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el); }
+$('fs').addEventListener('click', toggleFs);
+let idleTimer = 0;
+function wake() { document.body.classList.remove('idle'); clearTimeout(idleTimer); idleTimer = setTimeout(() => document.body.classList.add('idle'), 6000); }
+const overlay = $('overlay'); let started = false;
+function firstInteraction() { audio.start(); if (!started) { started = true; overlay.classList.add('gone'); } }
+for (const ev of ['pointerdown', 'touchend', 'click']) window.addEventListener(ev, () => { firstInteraction(); wake(); }, { capture: true });
+window.addEventListener('pointermove', wake);
+// меню в круглой кнопке: раскрывается при наведении/нажатии, сворачивается через 5 с
+const hud = $('hud'), menuBtn = $('menubtn');
+let menuTimer = 0, overMenu = false;
+function openMenu() { clearTimeout(menuTimer); hud.classList.remove('closed'); menuBtn.setAttribute('aria-expanded', 'true'); }
+function scheduleClose(ms = 5000) { clearTimeout(menuTimer); menuTimer = setTimeout(() => { if (overMenu) return; hud.classList.add('closed'); menuBtn.setAttribute('aria-expanded', 'false'); if (hud.contains(document.activeElement)) document.activeElement.blur(); }, ms); }
+for (const el of [hud, menuBtn]) {
+  el.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') { overMenu = true; openMenu(); } });
+  el.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') { overMenu = false; scheduleClose(); } });
+}
+menuBtn.addEventListener('click', () => { openMenu(); if (!overMenu) scheduleClose(); });
+hud.addEventListener('pointerdown', () => { if (!overMenu) scheduleClose(); });
+const focusables = () => [...document.querySelectorAll('#hud button, #hud input')].filter((el) => el.offsetParent !== null && !el.disabled && !el.closest('.collapsed') && !el.closest('.closed'));
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'f' || e.key === 'F' || e.key === 'а' || e.key === 'А') document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.();
-  if (e.key === 'm' || e.key === 'M' || e.key === 'ь' || e.key === 'Ь') { muted = !muted; audio.set(muted ? 0 : settings.volume, settings.rain); }
-});
-renderUI();
+  firstInteraction(); wake(); const k = e.key;
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', ' '].includes(k)) {
+    const wasClosed = hud.classList.contains('closed'); openMenu(); if (!overMenu) scheduleClose();
+    if (wasClosed) { document.querySelector('#skyseg .seg.sel')?.focus(); e.preventDefault(); return; }
+  }
+  const list = focusables(), i = list.indexOf(document.activeElement), onRange = document.activeElement?.type === 'range';
+  if (onRange && (k === 'ArrowLeft' || k === 'ArrowRight')) { /* стрелки двигают ползунок */ }
+  else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(k)) {
+    const dir = k === 'ArrowDown' || k === 'ArrowRight' ? 1 : -1; const n = i < 0 ? 0 : (i + dir + list.length) % list.length; list[n].focus(); e.preventDefault();
+  } else if (k >= '1' && k <= '4') update({ sky: SKY_PRESETS[+k - 1] });
+  else if ('mMьЬ'.includes(k)) toggleMute(); else if ('fFаА'.includes(k)) toggleFs();
+}, { capture: true });
+window.addEventListener('wheel', (e) => { if (hud.contains(e.target)) return; update({ rain: Math.min(1, Math.max(0, Math.round((settings.rain - Math.sign(e.deltaY) * 0.05) * 20) / 20)) }); }, { passive: true });
+renderUI(); wake();
 
 // ---------- кадр ----------
 let last = performance.now(), rainShown = settings.rain, flash = 0, nextBolt = 8 + Math.random() * 20, fps = 60;

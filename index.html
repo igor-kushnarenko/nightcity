@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>nightcity</title><link rel="icon" href="/nightcity/favicon.svg"><link rel="stylesheet" href="/src/style.css"></head>
+<body>
+<div id="stage"></div>
+<div id="overlay"><div>nightcity<br><small>нажмите, чтобы включить звук</small></div></div>
+<div id="menu"><button id="mbtn" aria-label="меню">☰</button>
+<div id="panel">
+  <label>Небо <select id="sky"><option value="dusk">сумерки</option><option value="night">ночь</option><option value="day">день</option><option value="storm">гроза</option></select></label>
+  <label><input type="checkbox" id="clouds"> облака</label>
+  <label>скорость облаков <input type="range" id="cloudSpeed" min="0" max="100"></label>
+  <label>огни города <input type="range" id="lights" min="0" max="100"></label>
+  <label>дождь <input type="range" id="rain" min="0" max="100"></label>
+  <label>параллакс <input type="range" id="parallax" min="0" max="100"></label>
+  <label>громкость <input type="range" id="volume" min="0" max="100"></label>
+  <small>F — весь экран, M — звук</small>
+</div></div>
+<script type="module" src="/src/main.js"></script>
+</body></html>

@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { W, H, LAYERS, ROOM_PARALLAX, layerOffset, LAMPS, LAMP_IDS, hitLamp, clientToScene } from './config.js';
 import { loadSettings, saveSettings, skyAssets, rainParams, SKY_PRESETS, toggleLamp } from './settings.js';
 import { Ambience } from './audio.js';
+import { createTransition, startTransition, stepTransition, blendParams, progress, PRESETS } from './transition.js';
 
 const params = new URLSearchParams(location.search);
 const NOFX = new Set((params.get('nofx') || '').split(',').filter(Boolean));
@@ -14,6 +15,8 @@ if (SKY_PRESETS.includes(params.get('sky'))) settings.sky = params.get('sky');
 if (params.has('lamps')) { const on = params.get('lamps').split(','); settings.lamps = { left: on.includes('left') || on.includes('all'), right: on.includes('right') || on.includes('all') }; }
 if (params.has('rain')) settings.rain = Math.min(1, Math.max(0, +params.get('rain')));
 
+const TT = params.has('tt') ? Math.max(0, +params.get('tt') || 0) : 10; // ?tt=сек — длительность перехода
+let tr = createTransition(settings.sky, TT), BP = blendParams(tr.weights);
 const BASE = import.meta.env.BASE_URL + 'layers/';
 const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false, preserveDrawingBuffer: true });
 renderer.setPixelRatio(1); renderer.setSize(W, H, false); renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
@@ -30,11 +33,13 @@ const T = { value: 0 };
 const skyTex = {}; for (const s of SKY_PRESETS) skyTex[s] = null;
 const getSky = (s) => (skyTex[s] ??= tex(skyAssets(s).sky));
 const skyMat = new THREE.ShaderMaterial({ vertexShader: vert, depthTest: false, depthWrite: false,
-  uniforms: { uTex: { value: getSky(settings.sky) }, uFlash: { value: 0 }, uStars: { value: tex('stars_night', 'masks/') }, uStarOn: { value: 0 }, uT: T },
+  uniforms: { uS0: { value: getSky('dusk') }, uS1: { value: getSky('night') }, uS2: { value: getSky('day') }, uS3: { value: getSky('storm') }, uW: { value: new THREE.Vector4(...tr.weights) }, uFlash: { value: 0 }, uStars: { value: tex('stars_night', 'masks/') }, uStarOn: { value: 0 }, uT: T },
   // звёзды: каждая (id в g маски) мерцает целиком, свой период 2–6 с, яркость 60–130 %, лёгкий оттенок, редкая вспышка
-  fragmentShader: `uniform sampler2D uTex, uStars; uniform float uFlash, uStarOn, uT; varying vec2 vUv;
+  fragmentShader: `uniform sampler2D uS0, uS1, uS2, uS3, uStars; uniform vec4 uW; uniform float uFlash, uStarOn, uT; varying vec2 vUv;
     float h(float n){ return fract(sin(n*12.9898)*43758.5453); }
-    void main(){ vec3 c = texture2D(uTex, vUv).rgb;
+    void main(){ vec3 c = vec3(0.);
+      if (uW.x > .001) c += texture2D(uS0, vUv).rgb*uW.x; if (uW.y > .001) c += texture2D(uS1, vUv).rgb*uW.y;
+      if (uW.z > .001) c += texture2D(uS2, vUv).rgb*uW.z; if (uW.w > .001) c += texture2D(uS3, vUv).rgb*uW.w;
       if (uStarOn > .001) { vec4 m = texture2D(uStars, vUv); if (m.r > .5) {
         float id = floor(m.g*255. + .5); float per = 2. + 4.*h(id); float w = sin(6.2832*(uT/per + h(id*1.3)));
         float k = .95 + .35*w; float sp = step(.985, h(id*3.7 + floor(uT/per)))*max(0., w)*.6;
@@ -49,22 +54,22 @@ const cloudOrder = order; const cloudGroup = { position: { set: (x, y) => { for 
 let clouds = [];
 function buildClouds() {
   for (const c of clouds) { scene.remove(c.mesh); c.mesh.material.dispose(); }
-  clouds = skyAssets(settings.sky).clouds.map((n, i) => {
+  clouds = [...skyAssets('dusk').clouds, ...skyAssets('storm').clouds].map((n, i) => {
     const mat = new THREE.ShaderMaterial({ vertexShader: vert, fragmentShader: cloudFrag, transparent: true, depthTest: false, depthWrite: false,
-      uniforms: { uTex: { value: tex(n) }, uX: { value: Math.random() }, uA: { value: settings.sky === 'storm' ? 0.75 : 0.9 }, uFlash: { value: 0 } } });
+      uniforms: { uTex: { value: tex(n) }, uX: { value: Math.random() }, uA: { value: 0 }, uFlash: { value: 0 } } });
     mat.uniforms.uTex.value.wrapS = THREE.RepeatWrapping;
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(W * LAYERS[1].scale, H * LAYERS[1].scale), mat); mesh.position.set(W / 2, H / 2, 0); mesh.renderOrder = cloudOrder; scene.add(mesh);
-    return { mesh, mat, speed: 0.002 * (0.6 + i * 0.35) };
+    return { mesh, mat, storm: n === 'clouds_storm', speed: 0.002 * (0.6 + (i % 3) * 0.35) };
   });
 }
 order++; buildClouds();
 
 // город: слой + маска (r окна, g фаза кластера, b неон)
-const cityFrag = `uniform sampler2D uTex, uMask; uniform float uT, uLights, uSeed, uFlash; varying vec2 vUv;
+const cityFrag = `uniform sampler2D uTex, uMask; uniform float uT, uLights, uSeed, uFlash; uniform vec3 uGrade; varying vec2 vUv;
   float h(float n){ return fract(sin(n*12.9898+uSeed)*43758.5453); }
   void main(){
     vec4 c = texture2D(uTex, vUv); if (c.a < .01) discard;
-    vec3 m = texture2D(uMask, vUv).rgb; vec3 col = c.rgb;
+    vec3 m = texture2D(uMask, vUv).rgb; vec3 col = c.rgb*uGrade;
     float ph = floor(m.g*255. + .5);                    // id компоненты: всё окно/вся полоса — одна фаза
     if (m.r > .5) {
       float per = 25. + 20.*h(ph*1.7);                  // своё окно времени у каждого окна, 25–45 с
@@ -84,7 +89,7 @@ const cityFrag = `uniform sampler2D uTex, uMask; uniform float uT, uLights, uSee
   }`;
 for (const L of LAYERS.slice(2)) {
   const mat = new THREE.ShaderMaterial({ vertexShader: vert, fragmentShader: cityFrag, transparent: true, depthTest: false, depthWrite: false,
-    uniforms: { uTex: { value: tex(L.id) }, uMask: { value: tex(L.id + '_fx', 'masks/') }, uT: T, uLights: { value: settings.lights }, uSeed: { value: order * 3.7 }, uFlash: { value: 0 } } });
+    uniforms: { uTex: { value: tex(L.id) }, uMask: { value: tex(L.id + '_fx', 'masks/') }, uT: T, uLights: { value: settings.lights }, uSeed: { value: order * 3.7 }, uFlash: { value: 0 }, uGrade: { value: new THREE.Vector3(...BP.grade) } } });
   if (NOFX.has('city')) mat.uniforms.uLights.value = 0.6;
   meshes[L.id] = quad(mat, L.scale);
 }
@@ -116,8 +121,8 @@ for (const L of NOFX.has('rain') ? [] : LOW ? [1, 2] : [0, 1, 2]) rainMeshes.pus
 const LP = LAMP_IDS.map((id) => LAMPS[id]);
 const roomMat = new THREE.ShaderMaterial({ vertexShader: vert, transparent: true, depthTest: false, depthWrite: false,
   uniforms: { uTex: { value: tex('room') }, uNrm: { value: tex('room_nrm', 'masks/') }, uEmit: { value: tex('room_emit', 'masks/') }, uLitL: { value: tex('lit_left', 'masks/') }, uLitR: { value: tex('lit_right', 'masks/') }, uFlash: { value: 0 }, uT: T,
-    uI: { value: new THREE.Vector2(0, 0) }, uLow: { value: LOW ? 1 : 0 } },
-  fragmentShader: `uniform sampler2D uTex, uNrm, uEmit, uLitL, uLitR; uniform float uFlash, uT, uLow; uniform vec2 uI; varying vec2 vUv;
+    uI: { value: new THREE.Vector2(0, 0) }, uTint: { value: new THREE.Vector3(...BP.room) }, uLow: { value: LOW ? 1 : 0 } },
+  fragmentShader: `uniform sampler2D uTex, uNrm, uEmit, uLitL, uLitR; uniform float uFlash, uT, uLow; uniform vec2 uI; uniform vec3 uTint; varying vec2 vUv;
     const vec3 C0 = vec3(${LP[0].color.join(',')}); const vec3 C1 = vec3(${LP[1].color.join(',')});
     vec3 lampPos(int i, vec2 p){ if (i == 0) return vec3(${LP[0].pos[0]}., ${LP[0].pos[1]}., 40.); return vec3(${LP[1].pos[0]}., clamp(p.y, ${LP[1].seg[0]}., ${LP[1].seg[1]}.), 30.); }
     void main(){
@@ -140,7 +145,7 @@ const roomMat = new THREE.ShaderMaterial({ vertexShader: vert, transparent: true
       vec3 hc = haloC / max(halo/.55, 1e-3);
       if (c.a < .01) { float a = min(.5, halo*.35 + refl); if (a < .004) discard; gl_FragColor = vec4(hc, a); return; }
       float fl0 = 1. + .02*sin(uT*13.1)*sin(uT*7.3), fl1 = 1. + .02*sin(uT*13.1 + 2.)*sin(uT*7.3 + 1.);
-      vec3 col = c.rgb + texture2D(uLitL, vUv).rgb*uI.x*fl0 + texture2D(uLitR, vUv).rgb*uI.y*fl1 + add + hc*halo*.22;
+      vec3 col = c.rgb*uTint + texture2D(uLitL, vUv).rgb*uI.x*fl0 + texture2D(uLitR, vUv).rgb*uI.y*fl1 + add + hc*halo*.22;
       gl_FragColor = vec4(col*(1.+uFlash*.35), c.a);
     }` });
 meshes.room = quad(roomMat, 1 + (ROOM_PARALLAX * 2) / W);
@@ -168,8 +173,8 @@ function renderUI() {
 }
 function update(patch) {
   const prevSky = settings.sky; settings = { ...settings, ...patch }; saveSettings(settings);
-  if (settings.sky !== prevSky) { skyMat.uniforms.uTex.value = getSky(settings.sky); buildClouds(); hint(SKY_NAMES[settings.sky]); }
-  audio.set(muted ? 0 : settings.volume, settings.rain); renderUI();
+  if (settings.sky !== prevSky) { tr = startTransition(tr, settings.sky, TT); hint(SKY_NAMES[settings.sky]); }
+  renderUI();
 }
 for (const b of document.querySelectorAll('#skyseg .seg')) b.addEventListener('click', () => update({ sky: b.dataset.sky }));
 $('cloudsbtn').addEventListener('click', () => update({ clouds: !settings.clouds }));
@@ -181,7 +186,7 @@ const lampAt = (e) => hitLamp(...clientToScene(e.clientX, e.clientY, canvas.getB
 window.addEventListener('pointermove', (e) => { canvas.style.cursor = e.target === canvas && lampAt(e) ? 'pointer' : ''; });
 canvas.addEventListener('click', (e) => { const id = lampAt(e); if (id) setLamp(id); });
 const muteBtn = $('mute');
-function toggleMute() { muted = !muted; audio.set(muted ? 0 : settings.volume, settings.rain); muteBtn.querySelector('span').textContent = muted ? 'Звук выкл' : 'Звук'; muteBtn.classList.toggle('off', muted); }
+function toggleMute() { muted = !muted; muteBtn.querySelector('span').textContent = muted ? 'Звук выкл' : 'Звук'; muteBtn.classList.toggle('off', muted); }
 muteBtn.addEventListener('click', toggleMute);
 function toggleFs() { const d = document, el = d.documentElement; if (d.fullscreenElement || d.webkitFullscreenElement) (d.exitFullscreen || d.webkitExitFullscreen).call(d); else (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el); }
 $('fs').addEventListener('click', toggleFs);
@@ -228,17 +233,22 @@ function frame(now) {
   const st = PARALLAX_ON ? settings.parallax : 0;
   for (const L of LAYERS) { const m = L.id === 'clouds' ? cloudGroup : meshes[L.id]; const [ox, oy] = layerOffset(L, cur[0], cur[1], st).map(Math.round); /* целые пиксели — без мерцания краёв при NEAREST */ if (m === cloudGroup) m.position.set(ox, oy, 0); else m.position.set(W / 2 + ox, H / 2 + oy, 0); }
   meshes.room.position.set(W / 2 - Math.round(cur[0] * ROOM_PARALLAX * st), H / 2 + Math.round(cur[1] * ROOM_PARALLAX * st), 0);
-  for (const c of clouds) c.mesh.visible = settings.clouds && !NOFX.has('clouds');
+  tr = stepTransition(tr, dt); BP = blendParams(tr.weights); const ws = tr.weights[3];
+  skyMat.uniforms.uW.value.set(...tr.weights);
+  for (const c of clouds) { const a = c.storm ? 0.75 * ws : 0.9 * (1 - ws); c.mat.uniforms.uA.value = a; c.mesh.visible = a > 0.003 && settings.clouds && !NOFX.has('clouds'); }
+  const rainEff = Math.min(1, settings.rain + BP.rainAdd * (1 - settings.rain));
+  audio.set(muted ? 0 : settings.volume, rainEff);
   for (const c of clouds) c.mat.uniforms.uX.value = (c.mat.uniforms.uX.value + dt * c.speed * settings.cloudSpeed) % 1;
   // молния — только в грозу
-  if (settings.sky === 'storm' && !NOFX.has('lightning')) { nextBolt -= dt; if (nextBolt < 0) { flash = 1; nextBolt = 12 + Math.random() * 30; } }
+  if (BP.storm > 0.85 && !NOFX.has('lightning')) { nextBolt -= dt; if (nextBolt < 0) { flash = 1; nextBolt = 12 + Math.random() * 30; } }
   flash = Math.max(0, flash - dt * 3.5); const fl = flash * (0.6 + 0.4 * Math.sin(T.value * 60));
-  skyMat.uniforms.uFlash.value = fl; skyMat.uniforms.uStarOn.value = NOFX.has('stars') || LOW ? 0 : settings.sky === 'night' ? 1 : 0; roomMat.uniforms.uFlash.value = fl * 0.3; for (const c of clouds) c.mat.uniforms.uFlash.value = fl;
-  for (const L of LAYERS.slice(2)) { const u = meshes[L.id].material.uniforms; u.uFlash.value = fl; if (!NOFX.has('city')) u.uLights.value = settings.lights; }
+  skyMat.uniforms.uFlash.value = fl; skyMat.uniforms.uStarOn.value = NOFX.has('stars') || LOW ? 0 : BP.stars; roomMat.uniforms.uFlash.value = fl * 0.3; for (const c of clouds) c.mat.uniforms.uFlash.value = fl;
+  for (const L of LAYERS.slice(2)) { const u = meshes[L.id].material.uniforms; u.uFlash.value = fl; u.uGrade.value.set(...BP.grade); if (!NOFX.has('city')) u.uLights.value = settings.lights * BP.lights; }
+  roomMat.uniforms.uTint.value.set(...BP.room);
   { const f = 1 - Math.exp(-dt / 0.1); const u = roomMat.uniforms.uI.value; u.x += ((settings.lamps.left ? 1 : 0) - u.x) * f; u.y += ((settings.lamps.right ? 1 : 0) - u.y) * f; }
-  rainShown += (settings.rain - rainShown) * (1 - Math.exp(-dt * 1.2)); const RP = rainParams(rainShown);
+  rainShown += (rainEff - rainShown) * (1 - Math.exp(-dt * 1.2)); const RP = rainParams(rainShown);
   rainU.uRainDen.value = RP.density; rainU.uRainLen.value = RP.length; rainU.uRainSlant.value = 0.03 + RP.slant * 0.15; rainU.uRainA.value = RP.alpha; rainU.uRainT.value = (rainU.uRainT.value + dt * RP.speed) % 1800;
   renderer.render(scene, camera); requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-window.__nightcity = { state: () => ({ ...settings, parallaxOn: PARALLAX_ON, offsets: LAYERS.map((L) => layerOffset(L, cur[0], cur[1], PARALLAX_ON ? settings.parallax : 0).map((v) => +v.toFixed(1))) }), fps: () => fps, bolt: () => { flash = 1; }, lamps: () => roomMat.uniforms.uI.value.toArray() };
+window.__nightcity = { state: () => ({ ...settings, parallaxOn: PARALLAX_ON, offsets: LAYERS.map((L) => layerOffset(L, cur[0], cur[1], PARALLAX_ON ? settings.parallax : 0).map((v) => +v.toFixed(1))) }), fps: () => fps, bolt: () => { flash = 1; }, lamps: () => roomMat.uniforms.uI.value.toArray(), sky: (p) => update({ sky: p }), transition: () => ({ weights: tr.weights.map((v) => +v.toFixed(3)), progress: +progress(tr).toFixed(3), target: tr.target }) };

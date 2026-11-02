@@ -2,6 +2,7 @@
 # Исходники не трогаем. Запуск: python3 tools/make_layers.py
 from PIL import Image
 import numpy as np, os
+from scipy import ndimage as ndi
 SRC = 'art_src/layers nightcity'; OUT = 'public/layers'; W, H = 1672, 941
 os.makedirs(OUT + '/masks', exist_ok=True)
 def load(name):
@@ -20,9 +21,13 @@ for k, n in names.items():
         mx = a[..., :3].max(-1); mn = a[..., :3].min(-1); sat = (mx - mn) / (mx + 1e-4)
         warm = (al > .5) & (r > .55) & (g > .4) & (b < g * .75) & (r >= g) & (sat > .35)
         neon = (al > .5) & (sat > .45) & (mx > .5) & (((b > r * 1.25) & (b > .55)) | ((g > .5) & (b > .5) & (r < .45)) | ((r > .55) & (b > .5) & (g < r * .6)))
-        m = np.zeros((H, W, 3), np.uint8); m[..., 0] = warm * 255; m[..., 2] = neon * 255
-        # кластер окон: случайная фаза на блок 6x6 (g) — чтобы окна мигали группами
-        rng = np.random.default_rng(len(k)); blk = rng.integers(0, 256, (H // 6 + 1, W // 6 + 1), dtype=np.uint8)
-        m[..., 1] = np.kron(blk, np.ones((6, 6), np.uint8))[:H, :W]
+        # чистка: закрытие дыр, удаление одиночных пикселей, каждое окно/полоса — связная компонента со своей фазой (g)
+        m = np.zeros((H, W, 3), np.uint8); rng = np.random.default_rng(len(k)); solid = al > .5
+        for ch, raw in ((0, warm), (2, neon)):
+            cl = ndi.binary_closing(raw, np.ones((3, 3), bool)) & solid
+            lab, n = ndi.label(cl, np.ones((3, 3), bool))
+            area = ndi.sum(cl, lab, np.arange(1, n + 1)); keep = np.zeros(n + 1, bool); keep[1:] = area >= (6 if ch == 0 else 8)
+            cl = keep[lab]; m[..., ch] = cl * 255
+            ph = np.zeros(n + 1, np.uint8); ph[1:] = rng.integers(1, 256, n); m[..., 1] = np.where(cl, ph[lab], m[..., 1])
+            print(k, 'ch', ch, 'components', int(keep.sum()))
         Image.fromarray(m).save(f'{OUT}/masks/{k}_fx.png', optimize=True)
-        print(k, 'windows', int(warm.sum()), 'neon', int(neon.sum()))

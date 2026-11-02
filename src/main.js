@@ -55,18 +55,19 @@ const cityFrag = `uniform sampler2D uTex, uMask; uniform float uT, uLights, uSee
   void main(){
     vec4 c = texture2D(uTex, vUv); if (c.a < .01) discard;
     vec3 m = texture2D(uMask, vUv).rgb; vec3 col = c.rgb;
-    float ph = m.g*255.;
+    float ph = floor(m.g*255. + .5);                    // id компоненты: всё окно/вся полоса — одна фаза
     if (m.r > .5) {
-      float slot = floor(uT*.25 + ph*.37); float off = step(.985, h(ph + slot*7.1));
-      float fl = 1. - .25*step(.93, h(ph*3.1 + floor(uT*14.)))*step(.97, h(ph + floor(uT*.7)));
-      float k = mix(.35, 1.25, uLights) * fl * (1. - .75*off);
-      col = col*k + vec3(.08,.05,0.)*uLights;
+      float per = 25. + 20.*h(ph*1.7);                  // своё окно времени у каждого окна, 25–45 с
+      float tt = uT/per + h(ph*2.3); float slot = floor(tt); float f = fract(tt);
+      float off = step(.96, h(ph + slot*7.1)) * smoothstep(.0, .08, f) * (1. - smoothstep(.55, .63, f));
+      float k = mix(.35, 1.25, uLights) * (1. - .7*off);
+      col = col*k + vec3(.08,.05,0.)*uLights*(1. - off);
     }
     if (m.b > .5) {
-      float pulse = .82 + .18*sin(uT*2.3 + ph*.05);
-      float gl = step(.992, h(floor(uT*9.) + floor(ph/32.)));
-      float k = mix(.4, 1.35, uLights) * pulse * (1. - .7*gl);
-      col = col*k + col*col*.25*uLights;
+      float pulse = .9 + .1*sin(uT*1.1 + ph*.37);
+      float gs = floor(uT*4.); float gl = step(.997, h(gs + ph*.13)) * .25;
+      float k = mix(.4, 1.3, uLights) * pulse * (1. - gl);
+      col = col*k + col*col*.2*uLights;
     }
     col += uFlash*.25*c.rgb;
     gl_FragColor = vec4(col, c.a);
@@ -177,8 +178,8 @@ function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000); last = now; T.value += dt; fps += (1 / Math.max(dt, 1e-3) - fps) * 0.05;
   const k = 1 - Math.exp(-dt * 4); cur = [cur[0] + (mouse[0] - cur[0]) * k, cur[1] + (mouse[1] - cur[1]) * k];
   const st = PARALLAX_ON ? settings.parallax : 0;
-  for (const L of LAYERS) { const m = L.id === 'clouds' ? cloudGroup : meshes[L.id]; const [ox, oy] = layerOffset(L, cur[0], cur[1], st); if (m === cloudGroup) m.position.set(ox, oy, 0); else m.position.set(W / 2 + ox, H / 2 + oy, 0); }
-  meshes.room.position.set(W / 2 - cur[0] * ROOM_PARALLAX * st, H / 2 + cur[1] * ROOM_PARALLAX * st, 0);
+  for (const L of LAYERS) { const m = L.id === 'clouds' ? cloudGroup : meshes[L.id]; const [ox, oy] = layerOffset(L, cur[0], cur[1], st).map(Math.round); /* целые пиксели — без мерцания краёв при NEAREST */ if (m === cloudGroup) m.position.set(ox, oy, 0); else m.position.set(W / 2 + ox, H / 2 + oy, 0); }
+  meshes.room.position.set(W / 2 - Math.round(cur[0] * ROOM_PARALLAX * st), H / 2 + Math.round(cur[1] * ROOM_PARALLAX * st), 0);
   for (const c of clouds) c.mesh.visible = settings.clouds && !NOFX.has('clouds');
   for (const c of clouds) c.mat.uniforms.uX.value = (c.mat.uniforms.uX.value + dt * c.speed * settings.cloudSpeed) % 1;
   // молния — только в грозу

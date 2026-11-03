@@ -4,7 +4,7 @@
 <body>
 <div id="bg"></div>
 <div id="stage"></div>
-<div id="overlay"><div class="hint">Нажмите любую кнопку или коснитесь экрана — включится звук.<br><small>Движение мыши — параллакс · колесо — сила дождя · меню — круглая кнопка справа внизу</small></div></div>
+<div id="overlay"><div class="hint">Нажмите любую кнопку или коснитесь экрана — включится звук.<br><small>Движение мыши — параллакс · колесо — сила дождя (над радио — станции) · R — радио, N — следующая станция · меню — круглая кнопка справа внизу</small></div></div>
 <div id="toast" class="glass"></div>
 <button id="menubtn" type="button" class="glass" aria-label="Меню" aria-expanded="false"><svg viewBox="0 0 16 16"><path d="M3 4.5h10M3 8h10M3 11.5h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
 <div id="hud" class="glass closed">
@@ -14,12 +14,14 @@
   <div class="row">
     <button id="lamp_left" type="button" class="icon" aria-pressed="false"><span class="led"></span><span>Лампа</span></button>
     <button id="lamp_right" type="button" class="icon" aria-pressed="false"><span class="led"></span><span>Панель</span></button>
+    <button id="radiobtn" type="button" class="icon" aria-pressed="false"><span class="led"></span><span>Радио</span></button>
   </div>
   <div class="row">
     <button id="cloudsbtn" type="button" class="icon" aria-pressed="true"><span class="led"></span><span>Облака</span></button>
     <button id="mute" type="button" class="icon"><span>Звук</span></button>
     <button id="fs" type="button" class="icon" aria-label="На весь экран"><svg viewBox="0 0 16 16"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" stroke="currentColor" fill="none" stroke-width="1.6"/></svg></button>
   </div>
+  <label class="radiovol rainlvl" id="radiorow"><button id="stprev" type="button" class="icon st" aria-label="Предыдущая станция">‹</button><span id="station" class="station">—</span><button id="stnext" type="button" class="icon st" aria-label="Следующая станция">›</button><input id="radiovol" type="range" min="0" max="100" step="5" aria-label="Громкость радио"></label>
   <label class="rainlvl" id="cloudrow"><span>Скорость облаков</span><input id="cloudSpeed" type="range" min="0" max="100" step="5"></label>
   <label class="rainlvl"><span>Огни города</span><input id="lights" type="range" min="0" max="100" step="5"></label>
   <label class="rainlvl"><span>Сила дождя</span><input id="rain" type="range" min="0" max="100" step="5"></label>

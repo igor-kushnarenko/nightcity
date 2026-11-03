@@ -25,3 +25,7 @@ export const LAMP_IDS = Object.keys(LAMPS);
 export function hitLamp(x, y) { for (const id of LAMP_IDS) { const [x0, y0, x1, y1] = LAMPS[id].hit; if (x >= x0 && x <= x1 && y >= y0 && y <= y1) return id; } return null; }
 /** Клиентские координаты → пиксели сцены при object-fit: contain. */
 export function clientToScene(cx, cy, rect) { const s = Math.min(rect.width / W, rect.height / H), ox = rect.left + (rect.width - W * s) / 2, oy = rect.top + (rect.height - H * s) / 2; return [(cx - ox) / s, (cy - oy) / s]; }
+// Радио на подоконнике (пиксели room.png): hit — зона клика/колеса, dial — шкала (светится), led — индикатор.
+export const RADIO = { name: 'Радио', hit: [1218, 676, 1470, 800], dial: [1325, 714, 1451, 745], led: [1418, 752], fade: 0.3 };
+/** Радио под точкой сцены? */
+export function hitRadio(x, y) { const [x0, y0, x1, y1] = RADIO.hit; return x >= x0 && x <= x1 && y >= y0 && y <= y1; }

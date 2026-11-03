@@ -1,7 +1,7 @@
 // Настройки nightcity (localStorage nightcity.settings.v1).
 export const SETTINGS_KEY = 'nightcity.settings.v1';
 export const SKY_PRESETS = ['dusk', 'night', 'day', 'storm'];
-export const DEFAULT_SETTINGS = { sky: 'dusk', clouds: true, cloudSpeed: 0.4, lights: 0.7, rain: 0.5, parallax: 0.6, volume: 0.5, lamps: { left: false, right: false } };
+export const DEFAULT_SETTINGS = { sky: 'dusk', clouds: true, cloudSpeed: 0.4, lights: 0.7, rain: 0.5, parallax: 0.6, volume: 0.5, lamps: { left: false, right: false }, radio: false, radioVol: 0.5, radioStation: '' };
 const c01 = (x, d) => (x !== null && x !== '' && x !== undefined && Number.isFinite(+x) ? Math.min(1, Math.max(0, +x)) : d);
 export function normalize(raw) {
   const D = DEFAULT_SETTINGS;
@@ -11,6 +11,7 @@ export function normalize(raw) {
     cloudSpeed: c01(raw?.cloudSpeed, D.cloudSpeed), lights: c01(raw?.lights, D.lights),
     rain: c01(raw?.rain, D.rain), parallax: c01(raw?.parallax, D.parallax), volume: c01(raw?.volume, D.volume),
     lamps: { left: !!raw?.lamps?.left, right: !!raw?.lamps?.right },
+    radio: !!raw?.radio, radioVol: c01(raw?.radioVol, D.radioVol), radioStation: typeof raw?.radioStation === 'string' ? raw.radioStation : '',
   };
 }
 export function loadSettings(storage = globalThis.localStorage) {

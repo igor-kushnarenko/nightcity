@@ -69,3 +69,4 @@ body{background:#05080d}
 #stage{position:absolute;inset:0}
 #stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;image-rendering:pixelated}
 #hud .seggroup{display:flex}
+.radiovol .station{opacity:.85;max-width:11em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.92em}.radiovol .st{padding:0 7px;min-width:0;line-height:1.4}

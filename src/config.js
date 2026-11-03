@@ -9,6 +9,22 @@ export const LAYERS = [
   { id: 'near', parallax: 34, scale: 1.05, fx: true },
 ];
 export const ROOM_PARALLAX = 2;
+// Параллакс пока выключен (код сохранён): true — вернуть реакцию на мышь (и ползунок в index.html).
+export const PARALLAX_ENABLED = false;
+// ===== Раскладки города — ЕДИНСТВЕННОЕ место, где двигать фон =====
+// x, y — сдвиг центра слоя в px холста 1672x941 (+x вправо, +y вниз); scale — масштаб слоя (1 = исходный PNG).
+// Маски огней/неона едут вместе со слоем. Новую раскладку — просто добавить ключ, она появится в меню (‹ ›).
+export const CITY_LAYOUTS = {
+  // panorama — снято из art_src/nightcity_panorama.psd (1890x1063 → ×1672/1890) скриптом tools/psd_layout.py
+  panorama: { name: 'Панорама', far: { x: 65, y: -88, scale: 0.575 }, midfar: { x: -123, y: -195, scale: 1.1023 }, midnear: { x: 255, y: -49, scale: 1.1041 }, near: { x: 28, y: -44, scale: 1.0934 } },
+  classic: { name: 'Классика', far: { x: 0, y: 0, scale: 1.03 }, midfar: { x: 0, y: 0, scale: 1.035 }, midnear: { x: 0, y: 0, scale: 1.04 }, near: { x: 0, y: 0, scale: 1.05 } },
+};
+export const CITY_IDS = Object.keys(CITY_LAYOUTS);
+export const DEFAULT_CITY = 'panorama';
+/** Следующая/предыдущая раскладка по кругу. */
+export function nextCity(id, d = 1) { const i = Math.max(0, CITY_IDS.indexOf(id)); return CITY_IDS[(i + d + CITY_IDS.length) % CITY_IDS.length]; }
+/** Плавная смесь двух раскладок для слоя (t 0..1). */
+export function cityPlace(from, to, layerId, t) { const a = CITY_LAYOUTS[from]?.[layerId] || { x: 0, y: 0, scale: 1 }, b = CITY_LAYOUTS[to]?.[layerId] || a, m = (u, v) => u + (v - u) * t; return { x: m(a.x, b.x), y: m(a.y, b.y), scale: m(a.scale, b.scale) }; }
 /** Смещение слоя по позиции мыши (-1..1) и силе параллакса; не выходит за запас масштаба. */
 export function layerOffset(layer, mx, my, strength) {
   const maxX = (W * (layer.scale - 1)) / 2, maxY = (H * (layer.scale - 1)) / 2, p = layer.parallax * strength;

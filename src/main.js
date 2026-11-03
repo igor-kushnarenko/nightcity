@@ -1,6 +1,6 @@
 // nightcity: небо → облака → дальний → средний дальний → средний ближний → ближний → дождь → комната.
 import * as THREE from 'three';
-import { W, H, LAYERS, ROOM_PARALLAX, layerOffset, LAMPS, LAMP_IDS, hitLamp, clientToScene, RADIO, hitRadio } from './config.js';
+import { W, H, LAYERS, ROOM_PARALLAX, layerOffset, LAMPS, LAMP_IDS, hitLamp, clientToScene, RADIO, hitRadio, PARALLAX_ENABLED, CITY_LAYOUTS, CITY_IDS, DEFAULT_CITY, nextCity, cityPlace } from './config.js';
 import { loadSettings, saveSettings, skyAssets, rainParams, SKY_PRESETS, toggleLamp } from './settings.js';
 import { Ambience } from './audio.js';
 import { Tuner } from './radio.js';
@@ -10,11 +10,13 @@ const params = new URLSearchParams(location.search);
 const NOFX = new Set((params.get('nofx') || '').split(',').filter(Boolean));
 const LOW = params.get('q') === 'low';
 const TOUCH = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
-const PARALLAX_ON = !(LOW || TOUCH || NOFX.has('parallax'));
+const PARALLAX_ON = PARALLAX_ENABLED && !(LOW || TOUCH || NOFX.has('parallax'));
 let settings = loadSettings();
 if (SKY_PRESETS.includes(params.get('sky'))) settings.sky = params.get('sky');
 if (params.has('lamps')) { const on = params.get('lamps').split(','); settings.lamps = { left: on.includes('left') || on.includes('all'), right: on.includes('right') || on.includes('all') }; }
 if (params.has('radio')) settings.radio = params.get('radio') === '1';
+if (!CITY_LAYOUTS[settings.city]) settings.city = DEFAULT_CITY;
+if (CITY_LAYOUTS[params.get('city')]) settings.city = params.get('city');
 if (params.has('rain')) settings.rain = Math.min(1, Math.max(0, +params.get('rain')));
 
 const TT = params.has('tt') ? Math.max(0, +params.get('tt') || 0) : 10; // ?tt=сек — длительность перехода
@@ -186,13 +188,14 @@ const $ = (id) => document.getElementById(id);
 const toast = $('toast'); let toastT;
 function hint(text) { toast.textContent = text; toast.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => toast.classList.remove('show'), 2600); }
 const SKY_NAMES = { dusk: 'Сумерки', night: 'Ночь', day: 'День', storm: 'Гроза' };
-const SLIDERS = ['cloudSpeed', 'lights', 'rain', 'parallax', 'volume'];
+const SLIDERS = ['cloudSpeed', 'lights', 'rain', 'parallax', 'volume'].filter((k) => document.getElementById(k)); // ползунок параллакса убран из меню
 function renderUI() {
   for (const b of document.querySelectorAll('#skyseg .seg')) b.classList.toggle('sel', b.dataset.sky === settings.sky);
   $('cloudsbtn').classList.toggle('on', settings.clouds); $('cloudsbtn').setAttribute('aria-pressed', String(settings.clouds));
   $('cloudrow').classList.toggle('collapsed', !settings.clouds);
   for (const k of SLIDERS) if (document.activeElement !== $(k)) $(k).value = Math.round(settings[k] * 100);
-  $('parallax').disabled = !PARALLAX_ON;
+  if ($('parallax')) $('parallax').disabled = !PARALLAX_ON;
+  $('cityname').textContent = CITY_LAYOUTS[settings.city].name;
   $('radiobtn').classList.toggle('on', settings.radio); $('radiobtn').setAttribute('aria-pressed', String(settings.radio));
   $('radiorow').classList.toggle('collapsed', !settings.radio); if (document.activeElement !== $('radiovol')) $('radiovol').value = Math.round(settings.radioVol * 100);
   for (const id of LAMP_IDS) { const b = $('lamp_' + id); b.classList.toggle('on', settings.lamps[id]); b.setAttribute('aria-pressed', String(settings.lamps[id])); }
@@ -209,6 +212,9 @@ function setLamp(id) { settings = toggleLamp(settings, id); saveSettings(setting
 for (const id of LAMP_IDS) $('lamp_' + id).addEventListener('click', () => setLamp(id));
 $('radiobtn').addEventListener('click', () => setRadio(!settings.radio));
 $('radiovol').addEventListener('input', (e) => { settings = { ...settings, radioVol: e.target.value / 100 }; saveSettings(settings); syncTuner(); });
+let cityFrom = settings.city, cityT = 1;
+function setCity(d) { cityFrom = settings.city; cityT = 0; update({ city: nextCity(settings.city, d) }); audio.click(); hint(CITY_LAYOUTS[settings.city].name); }
+$('cityprev').addEventListener('click', () => setCity(-1)); $('citynext').addEventListener('click', () => setCity(1));
 $('stprev').addEventListener('click', () => tuner.turn(-1)); $('stnext').addEventListener('click', () => tuner.turn(1));
 const canvas = renderer.domElement;
 const scenePt = (e) => clientToScene(e.clientX, e.clientY, canvas.getBoundingClientRect());
@@ -263,7 +269,9 @@ function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000); last = now; T.value += dt; fps += (1 / Math.max(dt, 1e-3) - fps) * 0.05;
   const k = 1 - Math.exp(-dt * 4); cur = [cur[0] + (mouse[0] - cur[0]) * k, cur[1] + (mouse[1] - cur[1]) * k];
   const st = PARALLAX_ON ? settings.parallax : 0;
-  for (const L of LAYERS) { const m = L.id === 'clouds' ? cloudGroup : meshes[L.id]; const [ox, oy] = layerOffset(L, cur[0], cur[1], st).map(Math.round); /* целые пиксели — без мерцания краёв при NEAREST */ if (m === cloudGroup) m.position.set(ox, oy, 0); else m.position.set(W / 2 + ox, H / 2 + oy, 0); }
+  cityT = Math.min(1, cityT + dt / 1.2); const ce = cityT * cityT * (3 - 2 * cityT); // смена вида города ~1.2 с
+  for (const L of LAYERS) { const m = L.id === 'clouds' ? cloudGroup : meshes[L.id]; const [ox, oy] = layerOffset(L, cur[0], cur[1], st).map(Math.round); /* целые пиксели — без мерцания краёв при NEAREST */ if (m === cloudGroup) { m.position.set(ox, oy, 0); continue; }
+    if (L.fx) { const p = cityPlace(cityFrom, settings.city, L.id, ce); m.scale.setScalar(p.scale / L.scale); m.position.set(Math.round(W / 2 + p.x) + ox, Math.round(H / 2 - p.y) + oy, 0); } else m.position.set(W / 2 + ox, H / 2 + oy, 0); }
   meshes.room.position.set(W / 2 - Math.round(cur[0] * ROOM_PARALLAX * st), H / 2 + Math.round(cur[1] * ROOM_PARALLAX * st), 0);
   tr = stepTransition(tr, dt); BP = blendParams(tr.weights); const ws = tr.weights[3];
   skyMat.uniforms.uW.value.set(...tr.weights);
@@ -285,4 +293,4 @@ function frame(now) {
   renderer.render(scene, camera); requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-window.__nightcity = { state: () => ({ ...settings, parallaxOn: PARALLAX_ON, offsets: LAYERS.map((L) => layerOffset(L, cur[0], cur[1], PARALLAX_ON ? settings.parallax : 0).map((v) => +v.toFixed(1))) }), fps: () => fps, bolt: () => { flash = 1; }, lamps: () => roomMat.uniforms.uI.value.toArray(), radio: () => ({ on: settings.radio, shown: +roomMat.uniforms.uRadio.value.x.toFixed(2), state: tuner.state, name: tuner.cur()?.name, n: tuner.list.length }), tuner, sky: (p) => update({ sky: p }), transition: () => ({ weights: tr.weights.map((v) => +v.toFixed(3)), progress: +progress(tr).toFixed(3), target: tr.target }) };
+window.__nightcity = { state: () => ({ ...settings, parallaxOn: PARALLAX_ON, cityShown: cityT >= 1 ? settings.city : 'transition', offsets: LAYERS.map((L) => layerOffset(L, cur[0], cur[1], PARALLAX_ON ? settings.parallax : 0).map((v) => +v.toFixed(1))) }), fps: () => fps, bolt: () => { flash = 1; }, lamps: () => roomMat.uniforms.uI.value.toArray(), radio: () => ({ on: settings.radio, shown: +roomMat.uniforms.uRadio.value.x.toFixed(2), state: tuner.state, name: tuner.cur()?.name, n: tuner.list.length }), tuner, sky: (p) => update({ sky: p }), transition: () => ({ weights: tr.weights.map((v) => +v.toFixed(3)), progress: +progress(tr).toFixed(3), target: tr.target }) };

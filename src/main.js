@@ -1,6 +1,6 @@
 // nightcity: небо → облака → дальний → средний дальний → средний ближний → ближний → дождь → комната.
 import * as THREE from 'three';
-import { W, H, LAYERS, ROOM_PARALLAX, layerOffset, LAMPS, LAMP_IDS, hitLamp, clientToScene, RADIO, hitRadio, PARALLAX_ENABLED, CITY_LAYOUTS, CITY_IDS, DEFAULT_CITY, nextCity, cityPlace } from './config.js';
+import { W, H, LAYERS, ROOM_PARALLAX, layerOffset, LAMPS, LAMP_IDS, hitLamp, clientToScene, RADIO, hitRadio, PARALLAX_ENABLED, CITY_LAYOUTS, CITY_IDS, DEFAULT_CITY, nextCity, cityPlace, cityAmbient } from './config.js';
 import { loadSettings, saveSettings, skyAssets, rainParams, SKY_PRESETS, toggleLamp } from './settings.js';
 import { Ambience } from './audio.js';
 import { Tuner } from './radio.js';
@@ -284,7 +284,7 @@ function frame(now) {
   flash = Math.max(0, flash - dt * 3.5); const fl = flash * (0.6 + 0.4 * Math.sin(T.value * 60));
   skyMat.uniforms.uFlash.value = fl; skyMat.uniforms.uStarOn.value = NOFX.has('stars') || LOW ? 0 : BP.stars; roomMat.uniforms.uFlash.value = fl * 0.3; for (const c of clouds) c.mat.uniforms.uFlash.value = fl;
   for (const L of LAYERS.slice(2)) { const u = meshes[L.id].material.uniforms; u.uFlash.value = fl; u.uGrade.value.set(...BP.grade); if (!NOFX.has('city')) u.uLights.value = settings.lights * BP.lights; }
-  roomMat.uniforms.uTint.value.set(...BP.room);
+  { const k = cityAmbient(cityFrom, settings.city, cityT * cityT * (3 - 2 * cityT)); roomMat.uniforms.uTint.value.set(BP.room[0] * k, BP.room[1] * k, BP.room[2] * k); } // темнее у подножия города, лампы не трогаем
   { const f = 1 - Math.exp(-dt / 0.1); const u = roomMat.uniforms.uI.value; u.x += ((settings.lamps.left ? 1 : 0) - u.x) * f; u.y += ((settings.lamps.right ? 1 : 0) - u.y) * f; }
   { const u = roomMat.uniforms.uRadio.value, f = Math.min(1, dt / RADIO.fade); u.x += Math.sign((settings.radio ? 1 : 0) - u.x) * Math.min(Math.abs((settings.radio ? 1 : 0) - u.x), f); u.y += ((radioHover ? 1 : 0) * (1 - u.x) * 0.6 - u.y) * Math.min(1, dt * 8); }
   tuner.update(dt);

@@ -1,7 +1,7 @@
 // Настройки nightcity (localStorage nightcity.settings.v1).
 export const SETTINGS_KEY = 'nightcity.settings.v1';
 export const SKY_PRESETS = ['dusk', 'night', 'day', 'storm'];
-export const DEFAULT_SETTINGS = { sky: 'dusk', clouds: true, cloudSpeed: 0.4, lights: 0.7, rain: 0.5, parallax: 0.6, volume: 0.5, lamps: { left: false, right: false }, radio: false, radioVol: 0.5, radioStation: '', city: 'panorama' };
+export const DEFAULT_SETTINGS = { sky: 'dusk', clouds: true, cloudSpeed: 0.4, lights: 0.7, rain: 0.5, parallax: 0.6, volume: 0.5, lamps: { left: false, right: false }, radio: false, radioVol: 0.5, radioStation: '', city: 'panorama2' };
 const c01 = (x, d) => (x !== null && x !== '' && x !== undefined && Number.isFinite(+x) ? Math.min(1, Math.max(0, +x)) : d);
 export function normalize(raw) {
   const D = DEFAULT_SETTINGS;
